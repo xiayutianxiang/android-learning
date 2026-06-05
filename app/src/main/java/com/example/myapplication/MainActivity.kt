@@ -1,179 +1,157 @@
 package com.example.myapplication
 
 import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.widget.Button
-import android.widget.TextView
+import android.provider.Settings
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ProcessLifecycleOwner
-import com.example.myapplication.notification.CallNotificationService
-import com.example.myapplication.notification.MetricsNotificationService
-import com.example.myapplication.notification.NotificationHelper
+import androidx.core.content.ContextCompat
+import com.example.myapplication.databinding.ActivityMainBinding
+import com.example.myapplication.live_updates.SnackbarNotificationManager
 
 class MainActivity : AppCompatActivity() {
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val backgroundRunnable = Runnable {
-        NotificationHelper.showBackgroundNotification(this)
-    }
-
-    private val lifecycleObserver = object : DefaultLifecycleObserver {
-        override fun onStop(owner: LifecycleOwner) {
-            handler.postDelayed(backgroundRunnable, 5000)
-        }
-
-        override fun onStart(owner: LifecycleOwner) {
-            handler.removeCallbacks(backgroundRunnable)
-        }
-    }
+    private lateinit var binding: ActivityMainBinding
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted) {
-            NotificationHelper.showBigTextNotification(this)
-        } else {
-            Toast.makeText(this, "通知权限被拒绝", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private var isCallActive = false
-    private var isDownloading = false
-    private var downloadProgress = 0
-    private var isMatchActive = false
-
-    private val progressRunnable = object : Runnable {
-        override fun run() {
-            if (isDownloading) {
-                downloadProgress += 10
-                if (downloadProgress > 100) {
-                    downloadProgress = 100
-                    NotificationHelper.showProgressNotification(
-                        this@MainActivity,
-                        "下载完成",
-                        100
-                    )
-                    isDownloading = false
-                    showStyleInfo("ProgressStyle", "下载已完成")
-                } else {
-                    NotificationHelper.showProgressNotification(
-                        this@MainActivity,
-                        "正在下载文件",
-                        downloadProgress
-                    )
-                    handler.postDelayed(this, 1000)
-                }
-            }
-        }
+        updatePermissionCardVisibility()
+        val message = if (isGranted) "Notification permission granted" else "Notification permission denied"
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContentView(R.layout.activity_main)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
-        NotificationHelper.createNotificationChannels(this)
-        setupButtons()
-        ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
+        setupListeners()
+        SnackbarNotificationManager.initialize(this)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        handler.removeCallbacks(backgroundRunnable)
-        handler.removeCallbacks(progressRunnable)
-        ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
+    override fun onResume() {
+        super.onResume()
+        updatePermissionCardVisibility()
+        updateLiveUpdatesSection()
     }
 
-    private fun setupButtons() {
-        findViewById<Button>(R.id.btn_big_text).setOnClickListener {
-            requestNotificationPermissionAndShow()
+    private fun setupListeners() {
+        binding.btnGrantPermission.setOnClickListener {
+            requestNotificationPermission()
         }
 
-        findViewById<Button>(R.id.btn_call).setOnClickListener {
-            if (!NotificationHelper.hasNotificationPermission(this)) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                return@setOnClickListener
-            }
-            toggleCallNotification()
+        binding.btnGoToSettings.setOnClickListener {
+            openNotificationSettings()
         }
 
-        findViewById<Button>(R.id.btn_progress).setOnClickListener {
-            if (!NotificationHelper.hasNotificationPermission(this)) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                return@setOnClickListener
-            }
-            toggleProgressNotification()
-        }
-
-        findViewById<Button>(R.id.btn_metric).setOnClickListener {
-            if (!NotificationHelper.hasNotificationPermission(this)) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                return@setOnClickListener
-            }
-            toggleMetricsNotification()
+        binding.btnCheckout.setOnClickListener {
+            onCheckout()
         }
     }
 
-    private fun requestNotificationPermissionAndShow() {
+    private fun requestNotificationPermission() {
         when {
-            NotificationHelper.hasNotificationPermission(this) -> {
-                NotificationHelper.showBigTextNotification(this)
+            // API 33+ 需要运行时权限
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+                when {
+                    ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED -> {
+                        updatePermissionCardVisibility()
+                    }
+                    shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) -> {
+                        binding.permissionRationale.visibility = View.VISIBLE
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    else -> {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
             }
-            shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) -> {
-                Toast.makeText(this, "需要通知权限才能显示通知", Toast.LENGTH_SHORT).show()
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
+            // API < 33 不需要运行时权限
             else -> {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                updatePermissionCardVisibility()
             }
         }
     }
 
-    private fun toggleCallNotification() {
-        isCallActive = !isCallActive
-        if (isCallActive) {
-            CallNotificationService.startIncomingCall(this, "张三", "+86 138 0000 1234")
-            showStyleInfo("CallStyle", "通话通知已显示，包含来电人信息和接听/拒绝按钮")
-        } else {
-            CallNotificationService.endCall(this)
-            showStyleInfo("CallStyle", "通话通知已取消")
+    private fun openNotificationSettings() {
+        val intent = when {
+            // API 34+ Live Updates 设置
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> {
+                Intent(Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                }
+            }
+            // API 26+ 通知设置
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O -> {
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                }
+            }
+            // API < 26 应用详情
+            else -> {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+            }
+        }
+
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "无法打开设置", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun toggleProgressNotification() {
-        isDownloading = !isDownloading
-        if (isDownloading) {
-            downloadProgress = 0
-            handler.post(progressRunnable)
-            showStyleInfo("ProgressStyle", "正在下载，通知会实时更新进度条")
+    private fun updatePermissionCardVisibility() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val hasPermission = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+
+            binding.permissionCard.visibility = if (hasPermission) View.GONE else View.VISIBLE
+            binding.permissionRationale.visibility = if (shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
         } else {
-            handler.removeCallbacks(progressRunnable)
-            NotificationHelper.showProgressNotification(this, "下载已取消", 0)
-            showStyleInfo("ProgressStyle", "下载已取消")
+            // API < 33 不需要运行时权限
+            binding.permissionCard.visibility = View.GONE
         }
     }
 
-    private fun toggleMetricsNotification() {
-        isMatchActive = !isMatchActive
-        if (isMatchActive) {
-            // 使用 Foreground Service 在后台持续更新通知
-            MetricsNotificationService.startMatch(this)
-            showStyleInfo("MetricStyle", "实时比分通知已显示，后台持续更新中...")
+    private fun updateLiveUpdatesSection() {
+        // 只有 API 36+ 才显示 Live Updates 增强功能说明
+        binding.postPromotedSection.visibility = if (SnackbarNotificationManager.isLiveUpdatesSupported()) {
+            View.VISIBLE
         } else {
-            MetricsNotificationService.stopMatch(this)
-            showStyleInfo("MetricStyle", "比分通知已取消")
+            View.GONE
         }
     }
 
-    private fun showStyleInfo(title: String, info: String) {
-        findViewById<TextView>(R.id.tv_style_title).text = title
-        findViewById<TextView>(R.id.tv_style_info).text = info
+    private fun onCheckout() {
+        // 检查通知权限
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "请先授予通知权限", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+
+        // 发送通知
+        SnackbarNotificationManager.start()
+        Toast.makeText(this, getString(R.string.checking_out), Toast.LENGTH_SHORT).show()
     }
 }

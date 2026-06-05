@@ -2,11 +2,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+    <!-- API 33+ 通知权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="FOREGROUND_SERVICE_DATA_SYNC"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- API 34+ Live Updates 权限 -->
+    <uses-permission
+        android:name="android.permission.POST_PROMOTED_NOTIFICATIONS"
+        android:minSdkVersion="34" />
+
+    <!-- API 34+ 前台服务类型 -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        android:minSdkVersion="34" />
+
+    <!-- API 28-33 前台服务权限 (向后兼容) -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        android:minSdkVersion="28" />
 
     <application
         android:allowBackup="true"
@@ -28,6 +40,7 @@
             </intent-filter>
         </activity>
 
+        <!-- 前台服务需要 API 28+，前台服务类型 dataSync 需要 API 34+ -->
         <service
             android:name=".notification.CallNotificationService"
             android:exported="false"
@@ -41,6 +54,12 @@
             android:foregroundServiceType="dataSync"
             tools:ignore="ForegroundServicePermission">
         </service>
+
+        <!-- 订单追踪前台服务 -->
+        <service
+            android:name=".live_updates.OrderTrackingService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

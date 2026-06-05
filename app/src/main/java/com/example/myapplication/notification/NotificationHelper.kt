@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
@@ -220,24 +221,24 @@ object NotificationHelper {
         sendNotification(context, NOTIFICATION_ID_PROGRESS, notification)
     }
 
-    fun showMetricsNotification(
-        context: Context,
-        homeTeam: String,
-        awayTeam: String,
-        homeScore: Int,
-        awayScore: Int,
-        matchTime: String,
-        homePossession: Int,
-        awayPossession: Int,
-        homeShots: Int,
-        awayShots: Int
-    ) {
+    fun showMetricsNotification(context: Context) {
         if (!hasNotificationPermission(context)) return
+
+        // 硬编码的比赛数据
+        val homeTeam = "主队"
+        val awayTeam = "客队"
+        val homeScore = 2
+        val awayScore = 1
+        val matchTime = "45'"
+        val homePossession = 55
+        val awayPossession = 45
+        val homeShots = 12
+        val awayShots = 8
 
         val homeTeamIcon = "⚽"
         val awayTeamIcon = "⚽"
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
+       /* if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
             val inboxStyle = NotificationCompat.MetricStyle()
                 .addMetric(
                     NotificationCompat.Metric(
@@ -264,7 +265,7 @@ object NotificationHelper {
                 .setContentIntent(createPendingIntent(context, NOTIFICATION_ID_METRICS))
                 .build()
             sendNotification(context, NOTIFICATION_ID_METRICS, notification)
-        }
+        }*/
     }
 
     fun cancelMetricsNotification(context: Context) {
